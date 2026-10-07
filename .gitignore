@@ -1,0 +1,14 @@
+# Go
+*.exe
+*.out
+bin/
+vendor/
+
+# Secrets and local config
+.env
+*.pem
+
+# Editors and OS
+.vscode/
+.idea/
+.DS_Store
