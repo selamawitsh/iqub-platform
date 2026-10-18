@@ -11,19 +11,18 @@ import (
 	"github.com/selamawitsh/iqub-platform/services/iqub-service/internal/presentation/httpapi"
 )
 
-// main is the composition root: the only place that knows every layer.
-// It builds the concrete pieces from the inside out and connects them.
 func main() {
 	port := os.Getenv("PORT")
 	if port == "" {
 		port = "8080"
 	}
 
-	repo := memory.NewIqubRepository()               // infrastructure
-	service := application.NewIqubService(repo)      // application
-	handler := httpapi.NewHandler(service)           // presentation
+	repo := memory.NewIqubRepository()
+	iqubService := application.NewIqubService(repo)
+	contributionService := application.NewContributionService(repo)
+	handler := httpapi.NewHandler(iqubService, contributionService)
 
-	srv := &http.Server{
+	server := &http.Server{
 		Addr:              ":" + port,
 		Handler:           httpapi.NewRouter(handler),
 		ReadHeaderTimeout: 5 * time.Second,
@@ -33,5 +32,5 @@ func main() {
 	}
 
 	log.Printf("iqub-service listening on :%s", port)
-	log.Fatal(srv.ListenAndServe())
+	log.Fatal(server.ListenAndServe())
 }
