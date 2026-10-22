@@ -11,15 +11,55 @@ import (
 )
 
 type iqubResponse struct {
-	ID                 string    `json:"id"`
-	Name               string    `json:"name"`
-	ContributionAmount int64     `json:"contribution_amount"`
-	Frequency          string    `json:"frequency"`
-	MaxMembers         int       `json:"max_members"`
-	Status             string    `json:"status"`
-	AdminID            string    `json:"admin_id"`
-	MemberIDs          []string  `json:"member_ids"`
-	CreatedAt          time.Time `json:"created_at"`
+	ID                 string     `json:"id"`
+	Name               string     `json:"name"`
+	ContributionAmount int64      `json:"contribution_amount"`
+	Frequency          string     `json:"frequency"`
+	MaxMembers         int        `json:"max_members"`
+	Status             string     `json:"status"`
+	AdminID            string     `json:"admin_id"`
+	MemberIDs          []string   `json:"member_ids"`
+	InviteCode         string     `json:"invite_code"`
+	CreatedAt          time.Time  `json:"created_at"`
+	StartedAt          *time.Time `json:"started_at,omitempty"`
+}
+
+type roundResponse struct {
+	ID          string    `json:"id"`
+	IqubID      string    `json:"iqub_id"`
+	Number      int       `json:"number"`
+	DueDate     time.Time `json:"due_date"`
+	Status      string    `json:"status"`
+	RecipientID string    `json:"recipient_id"`
+}
+
+type contributionResponse struct {
+	ID          string    `json:"id"`
+	IqubID      string    `json:"iqub_id"`
+	RoundID     string    `json:"round_id"`
+	MemberID    string    `json:"member_id"`
+	Amount      int64     `json:"amount"`
+	Status      string    `json:"status"`
+	RecordedAt  time.Time `json:"recorded_at"`
+	ConfirmedAt time.Time `json:"confirmed_at,omitempty"`
+}
+
+type ledgerEntryResponse struct {
+	ID        string    `json:"id"`
+	IqubID    string    `json:"iqub_id"`
+	RoundID   string    `json:"round_id"`
+	MemberID  string    `json:"member_id"`
+	Type      string    `json:"type"`
+	Amount    int64     `json:"amount"`
+	CreatedAt time.Time `json:"created_at"`
+}
+
+type confirmResponse struct {
+	Contribution   contributionResponse `json:"contribution"`
+	RoundCompleted bool                 `json:"round_completed"`
+	RecipientID    string               `json:"recipient_id,omitempty"`
+	PayoutAmount   int64                `json:"payout_amount,omitempty"`
+	GroupCompleted bool                 `json:"group_completed"`
 }
 
 type errorResponse struct {
@@ -27,7 +67,7 @@ type errorResponse struct {
 }
 
 func toResponse(i model.Iqub) iqubResponse {
-	return iqubResponse{
+	out := iqubResponse{
 		ID:                 i.ID,
 		Name:               i.Name,
 		ContributionAmount: i.ContributionAmount,
@@ -36,25 +76,69 @@ func toResponse(i model.Iqub) iqubResponse {
 		Status:             string(i.Status),
 		AdminID:            i.AdminID,
 		MemberIDs:          i.MemberIDs,
+		InviteCode:         i.InviteCode,
 		CreatedAt:          i.CreatedAt,
+	}
+	if !i.StartedAt.IsZero() {
+		started := i.StartedAt
+		out.StartedAt = &started
+	}
+	return out
+}
+
+func toRoundResponse(r model.Round) roundResponse {
+	return roundResponse{
+		ID:          r.ID,
+		IqubID:      r.IqubID,
+		Number:      r.Number,
+		DueDate:     r.DueDate,
+		Status:      string(r.Status),
+		RecipientID: r.RecipientID,
+	}
+}
+
+func toContributionResponse(c model.Contribution) contributionResponse {
+	return contributionResponse{
+		ID:          c.ID,
+		IqubID:      c.IqubID,
+		RoundID:     c.RoundID,
+		MemberID:    c.MemberID,
+		Amount:      c.Amount,
+		Status:      string(c.Status),
+		RecordedAt:  c.RecordedAt,
+		ConfirmedAt: c.ConfirmedAt,
+	}
+}
+
+func toLedgerResponse(e model.LedgerEntry) ledgerEntryResponse {
+	return ledgerEntryResponse{
+		ID:        e.ID,
+		IqubID:    e.IqubID,
+		RoundID:   e.RoundID,
+		MemberID:  e.MemberID,
+		Type:      string(e.Type),
+		Amount:    e.Amount,
+		CreatedAt: e.CreatedAt,
 	}
 }
 
 func writeJSON(w http.ResponseWriter, status int, data any) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)
-	// Headers are already sent, so a failed write cannot be reported to the client.
 	_ = json.NewEncoder(w).Encode(data)
 }
 
-// writeError translates errors from inner layers into HTTP status codes.
-// This translation belongs here, in the presentation layer, and nowhere deeper.
 func writeError(w http.ResponseWriter, err error) {
 	switch {
 	case errors.Is(err, model.ErrValidation):
 		writeJSON(w, http.StatusBadRequest, errorResponse{Error: err.Error()})
+	case errors.Is(err, model.ErrForbidden):
+		writeJSON(w, http.StatusForbidden, errorResponse{Error: err.Error()})
+	case errors.Is(err, model.ErrNotFound):
+		writeJSON(w, http.StatusNotFound, errorResponse{Error: "resource not found"})
+	case errors.Is(err, model.ErrConflict):
+		writeJSON(w, http.StatusConflict, errorResponse{Error: err.Error()})
 	default:
-		// Log the real cause for us, but never leak internals to the client.
 		log.Printf("internal error: %v", err)
 		writeJSON(w, http.StatusInternalServerError, errorResponse{Error: "internal server error"})
 	}
