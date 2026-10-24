@@ -12,3 +12,5 @@ vendor/
 .vscode/
 .idea/
 .DS_Store
+/services/iqub-service/iqub-service
+/services/iqub-service/server
