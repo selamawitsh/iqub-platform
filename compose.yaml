@@ -29,5 +29,60 @@ services:
       postgres:
         condition: service_healthy
 
+  member-db:
+    image: postgres:17
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: members
+      POSTGRES_USER: member
+      POSTGRES_PASSWORD: ${MEMBER_DB_PASSWORD:?set MEMBER_DB_PASSWORD in .env}
+    ports:
+      - "127.0.0.1:5433:5432"
+    volumes:
+      - member_db_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U member -d members"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  rabbitmq:
+    image: rabbitmq:3-management
+    restart: unless-stopped
+    environment:
+      RABBITMQ_DEFAULT_USER: ${RABBITMQ_USER:?set RABBITMQ_USER in .env}
+      RABBITMQ_DEFAULT_PASS: ${RABBITMQ_PASSWORD:?set RABBITMQ_PASSWORD in .env}
+    ports:
+      - "127.0.0.1:5673:5672"
+      - "127.0.0.1:15673:15672"
+    volumes:
+      - rabbitmq_data:/var/lib/rabbitmq
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  member-service:
+    build:
+      context: ./services/member-service
+      args:
+        GO_VERSION: "1.26.0"
+    restart: unless-stopped
+    environment:
+      PORT: "8081"
+      DATABASE_URL: postgres://member:${MEMBER_DB_PASSWORD}@member-db:5432/members?sslmode=disable
+      RABBITMQ_URL: amqp://${RABBITMQ_USER}:${RABBITMQ_PASSWORD}@rabbitmq:5672/
+      JWT_SECRET: ${JWT_SECRET:?set JWT_SECRET in .env}
+    ports:
+      - "127.0.0.1:8081:8081"   # temporary for testing; remove once the gateway exists (NFR-S3)
+    depends_on:
+      member-db:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+
 volumes:
   postgres_data:
+  member_db_data:
+  rabbitmq_data:
